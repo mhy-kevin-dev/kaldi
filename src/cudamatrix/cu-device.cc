@@ -44,6 +44,15 @@
 // the following is for cuda_legacy_noop().
 #include "cudamatrix/cu-kernels-ansi.h"
 
+// for random delay time
+#include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
+#include <iterator>
+#include <algorithm> // for shuffle
+#include <chrono> // print date and interval
+#include <ctime>   // print date and interval
+
 namespace kaldi {
 
 /// This function attempts to get a CUDA device context on some available device
@@ -436,6 +445,16 @@ bool CuDevice::SelectGpuIdAuto() {
 
   // Get ratios of memory use, if possible
   KALDI_LOG << "Selecting from " << num_gpus << " GPUs";
+  
+  // random delay before getting memory status 
+  struct timeval tv; 
+  gettimeofday(&tv, NULL);
+  srand(tv.tv_usec);  // Change the time precision to microseconds (10^-6 seconds)
+  // ref: (Recommended way to initialize srand) https://stackoverflow.com/questions/322938/recommended-way-to-initialize-srand/322995#322995
+  // ref: (details of timeval & gettimeofdat) http://www.cppblog.com/lynch/archive/2011/08/05/152520.html
+  
+  auto start = std::chrono::system_clock::now();
+  
   for(int32 n = 0; n < num_gpus; n++) {
     int32 ret = cudaSetDevice(n);
     switch(ret) {
@@ -445,6 +464,14 @@ bool CuDevice::SelectGpuIdAuto() {
         // get GPU name
         char name[128];
         DeviceGetName(name,128,n);
+        
+        // random delay
+        float min = 0.1, max = 0.8; // in seconds
+        float sec_sleep = (max - min) * rand() / (RAND_MAX + 1.0) + min;  
+        KALDI_LOG << "Delays before GetFreeMem: " << 0.5 + sec_sleep << " seconds.";
+        Sleep(0.5 + sec_sleep);
+        
+        
         // get GPU memory stats
         int64 free, total;
         std::string mem_stats;
@@ -484,8 +511,11 @@ bool CuDevice::SelectGpuIdAuto() {
   int32 max_id=0;
   std::sort(free_mem_ratio.begin(), free_mem_ratio.end(),
             greater_pair<int, float>);
+  KALDI_LOG << "Top1 after sorted: (" << free_mem_ratio[0].first << ", " << free_mem_ratio[0].second << ")" ;
   // the free_mem_ratio should be bigger than zero
   KALDI_ASSERT(free_mem_ratio[max_id].second > 0.0);
+
+
 
   int dev_id;
   float mem_ratio;
@@ -503,6 +533,14 @@ bool CuDevice::SelectGpuIdAuto() {
 
     max_id++;
   } while (!success && (max_id < free_mem_ratio.size()));
+
+  // calculate the total time for GPU selection
+  auto end = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::time_t end_time = std::chrono::system_clock::to_time_t(end);
+  std::string end_time_str = std::ctime(&end_time);
+  end_time_str.erase(end_time_str.find("\n", 0), 1);
+  KALDI_LOG << "Finished GPU selection at <" << end_time_str << ">, Total duration: " << elapsed_seconds.count() << "s" ; 
 
   if (e != cudaSuccess) {
     KALDI_WARN << "Failed to (automatically) select any device";
@@ -633,6 +671,7 @@ int64 CuDevice::free_memory_at_startup_;
 cudaDeviceProp CuDevice::properties_;
 bool CuDevice::debug_stride_mode_ = false;
 
+int32 CuDevice::occupied_device_id_ = -1; 
 
 void SynchronizeGpu() {
   cuda_legacy_noop();
