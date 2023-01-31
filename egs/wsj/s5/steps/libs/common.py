@@ -210,6 +210,10 @@ def background_command_waiter(command, popen_object, require_zero_status):
             thread_module.interrupt_main()
         else:
             logger.warning(str)
+    else:
+        if "queue.pl: job failed with status" in e:
+            s = e.split("\n")[0]  
+            logger.warning("Command retried: {}".format(s))
 
 
 def get_number_of_leaves_from_tree(alidir):
