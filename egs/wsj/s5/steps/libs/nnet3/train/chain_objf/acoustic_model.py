@@ -184,6 +184,11 @@ def train_new_models(dir, iter, srand, num_jobs,
                           if iter > 0 else "") +
                          (" --write-cache={0}/cache.{1}".format(dir, iter + 1)
                           if job == 1 else ""))
+        
+        random.seed(job)
+        gpuid = job % 3
+        gpuenv = "CUDA_VISIBLE_DEVICES={} ".format(gpuid)
+        
         thread = common_lib.background_command(
             """{command} {train_queue_opt} {dir}/log/train.{iter}.{job}.log \
                     nnet3-chain-train {parallel_train_opts} {verbose_opt} \
@@ -191,6 +196,7 @@ def train_new_models(dir, iter, srand, num_jobs,
                     --l2-regularize={l2} --leaky-hmm-coefficient={leaky} \
                     {cache_io_opts}  --xent-regularize={xent_reg} \
                     {deriv_time_opts} \
+                    --delay={delay_ms} \
                     --print-interval=10 --momentum={momentum} \
                     --max-param-change={max_param_change} \
                     --backstitch-training-scale={backstitch_training_scale} \
@@ -205,6 +211,8 @@ def train_new_models(dir, iter, srand, num_jobs,
                         --srand={srand} ark:- ark:- | nnet3-chain-merge-egs \
                         --minibatch-size={num_chunk_per_mb} ark:- ark:- |" \
                     {dir}/{next_iter}.{job}.raw""".format(
+                        env=gpuenv, 
+                        delay_ms=(int(job)*1), 
                         command=run_opts.command,
                         train_queue_opt=run_opts.train_queue_opt,
                         dir=dir, iter=iter, srand=iter + srand,
