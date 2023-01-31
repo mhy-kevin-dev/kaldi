@@ -34,6 +34,47 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.info('Starting chain model trainer (train.py)')
 
+class QueueErrorMessageHandler(logging.StreamHandler):
+    """
+    A handler class which monitors logging messages for post processing qsub errors
+    """
+    def __init__(self):
+        logging.StreamHandler.__init__(self)
+        self.history = []
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            if "Command exited with status 1:" in msg:
+                logfile = [x for x in msg.split() if "log/train." in x]
+                # logger.info(">> {}, {}".format(len(logfile), os.path.isfile(logfile[0])))
+                if len(logfile) > 0 and os.path.isfile(logfile[0]):
+                    name = logfile[0].split("/")[-1].replace(".log", "")
+                    for line in open(logfile[0]):
+                        if "FinalizeActiveGpu():cu-device.cc" in line and line not in self.history:
+                            logger.info("(debug)({}) {}".format(name, " ".join(line.split()[2:]).replace("\n", "")))
+                            self.history.append(line)
+                        if "AllocateNewRegion():cu-allocator.cc" in line and "About to" in line and line not in self.history:
+                            logger.info("(debug)({}) {}".format(name, " ".join(line.split()[4:]).replace("\n", "")))
+                            self.history.append(line)
+                        if "AllocateNewRegion():cu-allocator.cc" in line and "Failed to" in line and line not in self.history:
+                            logger.info("(debug)({}) {}".format(name, " ".join(line.split()[2:]).replace("Possibly this is due to sharing the GPU. Try switching the GPUs to exclusive mode (nvidia-smi -c 3) and using the option --use-gpu=wait to scripts like steps/nnet3/chain/train.py. ", "").replace("\n", "")))
+                            self.history.append(line)
+                        if "ApplyPow():cu-vector.cc" in line and "out of memory" in line and line not in self.history:
+                            logger.info("(debug)({}) {}".format(name, " ".join(line.split()[2:]).replace("\n", "")))
+                            self.history.append(line)
+                        if "RandUniform():cu-rand.cc" in line and line not in self.history:
+                            logger.info("(debug)({}) {}".format(name, " ".join(line.split()[2:]).replace("\n", "")))
+                            self.history.append(line)
+                stream = self.stream
+                stream.write(msg)
+                self.flush()
+        except Exception as e:
+            self.handleError(record)
+
+qmsg_handler = QueueErrorMessageHandler()
+qmsg_handler.setLevel(logging.INFO)
+#qmsg_handler.setFormatter("%(asctime)s [%(funcName)s - %(levelname)s ] %(message)s")
+logger.addHandler(qmsg_handler)
 
 def get_args():
     """ Get args from stdin.
@@ -282,6 +323,7 @@ def train(args, run_opts):
 
     arg_string = pprint.pformat(vars(args))
     logger.info("Arguments for the experiment\n{0}".format(arg_string))
+    logging.basicConfig(level=logging.INFO, filename=args.dir + '/logging.log', filemode='a', format="%(asctime)s [%(funcName)s - %(levelname)s ] %(message)s")
 
     # Check files
     chain_lib.check_for_required_files(args.feat_dir, args.tree_dir,
