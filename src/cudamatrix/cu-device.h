@@ -49,6 +49,13 @@ typedef int cusolverStatus_t;
 #include "cudamatrix/cu-allocator.h"
 #include "cudamatrix/cu-common.h"
 
+#include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
+#include <iterator>
+#include <algorithm> // for shuffle
+#include <chrono> // print date and interval
+#include <ctime>   // print date and interval
 
 namespace kaldi {
 
@@ -336,6 +343,9 @@ class CuDevice {
   // call cudaSetDevice(device_id))
   static int32 device_id_;
 
+  static int32 occupied_device_id_;
+  //static std::vector<int32> in_use_devices_;
+   
   // This will automatically be set to true if the application has multiple
   // threads that access the GPU device.  It is used to know whether to
   // use locks when accessing the allocator and the profiling-related code.
